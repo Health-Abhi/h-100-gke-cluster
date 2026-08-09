@@ -78,7 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           cluster=$(python -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["metadata"]["name"])' "$REQUEST_FILE")
-          tfvars=$(mktemp)
+          tfvars=$(mktemp --suffix=.json)
           destroy_complete=false
           cleanup() {
             rm -f "$tfvars"
