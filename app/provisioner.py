@@ -200,6 +200,29 @@ def _run_pipeline(job: ProvisionJob, request_path: Path, root_dir: Path, setting
         Path(tfvars_path).unlink(missing_ok=True)
 
     job.log("Terraform apply completed. The GKE cluster has been created.")
+
+    gke_tf_cmd = [
+        sys.executable,
+        str(root_dir / "scripts" / "render_gke_tf.py"),
+        str(request_path),
+        "--repository-root",
+        str(root_dir),
+    ]
+    if settings.gke_module_source:
+        gke_tf_cmd += ["--module-source", settings.gke_module_source]
+    if settings.create_cluster_projects:
+        gke_tf_cmd += [
+            "--create-project",
+            "--project-parent",
+            settings.cluster_project_parent or "",
+            "--billing-account",
+            settings.billing_account or "",
+        ]
+    _run_step(job, gke_tf_cmd, root_dir)
+    job.log(
+        f"Wrote clusters/{project_id}_{cluster_name}/gke.tf (project, folder/org, billing account, "
+        "and cluster settings pulled from this request)."
+    )
     job.log(
         "Next (manual, optional): connect via Fleet Connect Gateway and run "
         "scripts/bootstrap_cluster.sh (requires bash / Git Bash) to install Argo CD "

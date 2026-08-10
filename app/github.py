@@ -81,6 +81,49 @@ class GitHubClient:
                 records.append(record)
         return records
 
+    async def list_pending_pull_requests(self) -> list[dict[str, Any]]:
+        """Requests that have an open PR (not yet merged to the default branch)."""
+        pulls = await self._request(
+            "GET",
+            f"{self.repo_path}/pulls",
+            params={"state": "open", "base": self.default_branch, "per_page": 100},
+        )
+        records: list[dict[str, Any]] = []
+        for pull in pulls:
+            head_ref = pull.get("head", {}).get("ref", "")
+            if not head_ref.startswith("cluster-request/"):
+                continue
+            head_sha = pull.get("head", {}).get("sha")
+            files = await self._request(
+                "GET",
+                f"{self.repo_path}/pulls/{pull['number']}/files",
+                params={"per_page": 100},
+            )
+            for changed in files:
+                path = changed.get("filename", "")
+                if not re.fullmatch(r"requests/(dev|test|stage|prod)/[^/]+\.yaml", path):
+                    continue
+                if changed.get("status") == "removed":
+                    continue
+                content = await self._request(
+                    "GET",
+                    f"{self.repo_path}/contents/{path}",
+                    params={"ref": head_sha},
+                )
+                decoded = base64.b64decode(content["content"]).decode("utf-8")
+                try:
+                    record = yaml.safe_load(decoded)
+                except yaml.YAMLError:
+                    continue
+                if isinstance(record, dict):
+                    record["_path"] = path
+                    status = record.setdefault("status", {}) or {}
+                    status["phase"] = "PENDING_REVIEW"
+                    status["pull_request_url"] = pull.get("html_url")
+                    record["status"] = status
+                    records.append(record)
+        return records
+
     async def create_request_pull_request(
         self,
         request_path: str,

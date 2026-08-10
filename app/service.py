@@ -57,7 +57,14 @@ class ClusterFactoryService:
 
     async def records(self) -> list[dict[str, Any]]:
         if self.github:
-            return await self.github.list_request_records()
+            merged = await self.github.list_request_records()
+            existing_names = {item.get("metadata", {}).get("name") for item in merged}
+            pending = await self.github.list_pending_pull_requests()
+            for record in pending:
+                if record.get("metadata", {}).get("name") in existing_names:
+                    continue
+                merged.append(record)
+            return merged
         return self.local_repository.list_records()
 
     def validate(self, request: ClusterRequestCreate) -> ValidationResult:

@@ -134,7 +134,15 @@ jobs:
                 -var-file="$tfvars" \
                 "${extra_args[@]}"
 
-              ./scripts/render_gke_tf.py "$request"
+              gke_tf_args=(./scripts/render_gke_tf.py "$request")
+              if [[ "${CREATE_CLUSTER_PROJECTS:-false}" == "true" ]]; then
+                gke_tf_args+=(
+                  --create-project
+                  --project-parent "${CLUSTER_PROJECT_PARENT}"
+                  --billing-account "${BILLING_ACCOUNT}"
+                )
+              fi
+              "${gke_tf_args[@]}"
 
               membership=$(terraform -chdir=terraform/cluster output -raw fleet_membership)
               gcloud container fleet memberships get-credentials "$membership" \

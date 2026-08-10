@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     create_cluster_projects: bool = False
     cluster_project_parent: str | None = None
     billing_account: str | None = None
+    gke_module_source: str | None = None
     gke_security_group: str | None = None
     platform_admin_group: str | None = None
     iam_principal_type: str = "group"
