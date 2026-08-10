@@ -1,0 +1,86 @@
+apiVersion: platform.example.com/v1alpha1
+kind: GKEClusterRequest
+metadata:
+  name: abhishek
+  created_at: '2026-08-10T22:04:45.527247Z'
+  created_by: ancyrusansh@gmail.com
+  labels:
+    environment: prod
+    team: test-team
+spec:
+  name: abhishek
+  project_id: gcpproject-490711
+  blueprint: standard-prod-v1
+  environment: prod
+  region: us-west1
+  owner:
+    team: test-team
+    google_group: ancyrusansh@gmail.com
+    cost_center: cc-personal-test
+    technical_contact: ancyrusansh@gmail.com
+  workload:
+    data_classification: internal
+    exposure: internal
+    description: asdasd
+  capacity:
+    system_min_nodes: 3
+    system_max_nodes: 9
+    general_min_nodes: 3
+    general_max_nodes: 60
+    max_pods_per_node: 64
+  gpu:
+    enabled: false
+    model: null
+    machine_type: null
+    accelerator_count: 0
+    minimum_nodes: 0
+    maximum_nodes: 0
+    zones: []
+    provisioning_model: standard
+    reservation_name: null
+  availability:
+    tier: regional-ha
+    application_minimum_replicas: 3
+    secondary_region: null
+  backup:
+    tier: gold
+    retention_days: 90
+    delete_lock_days: 7
+    target_rpo_minutes: 60
+    include_volume_data: true
+    include_secrets: true
+  network:
+    mode: dedicated
+    host_project_id: null
+    network_name: gke-platform
+    create_nat: true
+    private_endpoint_only: true
+    authorized_cidrs: []
+  lifecycle:
+    deletion_protection: true
+    expiration_date: null
+  labels:
+    application: test-team
+    data-classification: internal
+    environment: prod
+    team: test-team
+    cost-center: cc-personal-test
+    managed-by: gke-cluster-factory
+resolved:
+  network:
+    node_cidr: 10.64.0.0/24
+    pod_cidr: 10.128.0.0/16
+    service_cidr: 172.20.0.0/20
+    control_plane_cidr: 172.24.0.0/28
+    subnet_name: snet-abhishek-42b5bf
+    pod_range_name: pods-abhishek-42b5bf
+    service_range_name: svc-abhishek-42b5bf
+status:
+  phase: REQUESTED
+  conditions:
+  - type: SchemaValid
+    status: 'True'
+    last_transition_time: '2026-08-10T22:04:45.527272Z'
+  - type: PolicyValid
+    status: 'True'
+    last_transition_time: '2026-08-10T22:04:45.527275Z'
