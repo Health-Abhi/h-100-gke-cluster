@@ -68,6 +68,7 @@ jobs:
           PLATFORM_ADMIN_GROUP: ${{ vars.PLATFORM_ADMIN_GROUP }}
           IAM_PRINCIPAL_TYPE: ${{ vars.IAM_PRINCIPAL_TYPE }}
           ENABLE_GOOGLE_GROUPS_RBAC: ${{ vars.ENABLE_GOOGLE_GROUPS_RBAC }}
+          GKE_MODULE_SOURCE: ${{ vars.GKE_MODULE_SOURCE }}
         run: |
           set -euo pipefail
 
@@ -133,6 +134,8 @@ jobs:
                 -var-file="$tfvars" \
                 "${extra_args[@]}"
 
+              ./scripts/render_gke_tf.py "$request"
+
               membership=$(terraform -chdir=terraform/cluster output -raw fleet_membership)
               gcloud container fleet memberships get-credentials "$membership" \
                 --project "$project" \
@@ -181,24 +184,29 @@ jobs:
         run: |
           set -euo pipefail
           [[ -d .git ]] || exit 0
-          if git diff --quiet -- requests; then
+          mkdir -p clusters
+          # -N (intent-to-add) makes brand-new files under clusters/ show up in
+          # `git diff`/`git diff --quiet` below instead of being silently
+          # skipped as untracked.
+          git add -N clusters
+          if git diff --quiet -- requests clusters; then
             exit 0
           fi
           git config user.name "gke-cluster-factory[bot]"
           git config user.email "gke-cluster-factory@users.noreply.github.com"
 
-          # Preserve the status changes as a patch instead of a commit so we can
-          # re-apply them cleanly on top of whatever main looks like right now.
-          # Committing first and rebasing after (the old approach) fails hard if
-          # main moved in the meantime, since a rebase replays a fixed diff.
-          git diff -- requests > /tmp/status.patch
+          # Preserve the status + gke.tf changes as a patch instead of a commit so
+          # we can re-apply them cleanly on top of whatever main looks like right
+          # now. Committing first and rebasing after (the old approach) fails hard
+          # if main moved in the meantime, since a rebase replays a fixed diff.
+          git diff -- requests clusters > /tmp/status.patch
 
           attempt=0
           until git fetch origin main \
              && git reset --hard origin/main \
              && git apply --3way /tmp/status.patch \
-             && git add requests \
-             && git commit -m "chore: update cluster reconciliation status [skip ci]" \
+             && git add requests clusters \
+             && git commit -m "chore: update cluster reconciliation status and gke.tf [skip ci]" \
              && git push origin HEAD:main
           do
             attempt=$((attempt + 1))
