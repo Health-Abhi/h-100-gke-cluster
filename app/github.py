@@ -130,6 +130,7 @@ class GitHubClient:
         yaml_text: str,
         cluster_name: str,
         actor: str,
+        extra_files: dict[str, str] | None = None,
     ) -> str:
         base_ref = await self._request(
             "GET",
@@ -158,6 +159,21 @@ class GitHubClient:
                 },
             },
         )
+        for extra_path, extra_text in (extra_files or {}).items():
+            extra_encoded = base64.b64encode(extra_text.encode("utf-8")).decode("ascii")
+            await self._request(
+                "PUT",
+                f"{self.repo_path}/contents/{extra_path}",
+                json={
+                    "message": f"request: generate {extra_path} for {cluster_name}",
+                    "content": extra_encoded,
+                    "branch": branch,
+                    "committer": {
+                        "name": "GKE Cluster Factory",
+                        "email": "gke-cluster-factory@users.noreply.github.com",
+                    },
+                },
+            )
         pull = await self._request(
             "POST",
             f"{self.repo_path}/pulls",

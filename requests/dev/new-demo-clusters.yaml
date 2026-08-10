@@ -1,0 +1,91 @@
+apiVersion: platform.example.com/v1alpha1
+kind: GKEClusterRequest
+metadata:
+  name: new-demo-clusters
+  created_at: '2026-08-09T09:19:14.006643Z'
+  created_by: ancyrusansh@gmail.com
+  labels:
+    environment: dev
+    team: payments-ml
+spec:
+  name: new-demo-clusters
+  project_id: gcpproject-490711
+  blueprint: standard-dev-v1
+  environment: dev
+  region: us-west1
+  owner:
+    team: payments-ml
+    google_group: ancyrusansh@gmail.com
+    cost_center: cc-personal-test
+    technical_contact: ancyrusansh@gmail.com
+  workload:
+    data_classification: internal
+    exposure: internal
+    description: Testing
+  capacity:
+    system_min_nodes: 1
+    system_max_nodes: 3
+    general_min_nodes: 1
+    general_max_nodes: 10
+    max_pods_per_node: 64
+  gpu:
+    enabled: false
+    model: null
+    machine_type: null
+    accelerator_count: 0
+    minimum_nodes: 0
+    maximum_nodes: 0
+    zones: []
+    provisioning_model: standard
+    reservation_name: null
+  availability:
+    tier: regional-ha
+    application_minimum_replicas: 2
+    secondary_region: null
+  backup:
+    tier: bronze
+    retention_days: 7
+    delete_lock_days: 0
+    target_rpo_minutes: 60
+    include_volume_data: true
+    include_secrets: true
+  network:
+    mode: shared
+    host_project_id: gcpproject-490711
+    network_name: gke-platform
+    create_nat: true
+    private_endpoint_only: true
+    authorized_cidrs: []
+  lifecycle:
+    deletion_protection: true
+    expiration_date: null
+  labels:
+    application: payments-ml
+    data-classification: internal
+    environment: dev
+    team: payments-ml
+    cost-center: cc-personal-test
+    managed-by: gke-cluster-factory
+resolved:
+  network:
+    node_cidr: 10.64.0.0/24
+    pod_cidr: 10.128.0.0/16
+    service_cidr: 172.20.0.0/20
+    control_plane_cidr: 172.24.0.0/28
+    subnet_name: snet-new-demo-clusters-42fad3
+    pod_range_name: pods-new-demo-clusters-42fad3
+    service_range_name: svc-new-demo-clusters-42fad3
+status:
+  phase: FAILED
+  conditions:
+  - type: SchemaValid
+    status: 'True'
+    last_transition_time: '2026-08-09T09:19:14.006668Z'
+  - type: PolicyValid
+    status: 'True'
+    last_transition_time: '2026-08-09T09:19:14.006671Z'
+  - type: Reconciled
+    status: 'False'
+    last_transition_time: '2026-08-09T09:22:13.645511Z'
+    message: Reconciliation failed. Review the GitHub Actions run and cloud operation
+      logs.

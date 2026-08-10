@@ -8,6 +8,7 @@ import yaml
 from app.catalog import CatalogError, get_profile, load_catalog
 from app.config import Settings
 from app.github import GitHubClient
+from app.gke_tf import DEFAULT_MODULE_SOURCE, render_from_document
 from app.ipam import allocate_network, load_ipam_config
 from app.models import (
     BackupTier,
@@ -179,12 +180,14 @@ class ClusterFactoryService:
         request_path = f"requests/{request.environment.value}/{request.name}.yaml"
         pull_request_url: str | None = None
 
+        gke_tf_path, gke_tf_content = self._render_gke_tf(record)
         if self.github:
             pull_request_url = await self.github.create_request_pull_request(
                 request_path=request_path,
                 yaml_text=yaml_text,
                 cluster_name=request.name,
                 actor=actor,
+                extra_files={gke_tf_path: gke_tf_content},
             )
             status = "PENDING_REVIEW"
             message = "Request validated and a pull request was opened"
@@ -194,6 +197,8 @@ class ClusterFactoryService:
                 request.name,
                 yaml_text,
             )
+            (self.settings.root_dir / gke_tf_path).parent.mkdir(parents=True, exist_ok=True)
+            (self.settings.root_dir / gke_tf_path).write_text(gke_tf_content, encoding="utf-8")
             status = "LOCAL_CREATED"
             message = "Request validated and written to the local requests directory"
 
@@ -245,6 +250,19 @@ class ClusterFactoryService:
                 )
             )
         return sorted(summaries, key=lambda item: item.created_at, reverse=True)
+
+    def _render_gke_tf(self, record: dict[str, Any]) -> tuple[str, str]:
+        try:
+            return render_from_document(
+                record,
+                self.settings.root_dir,
+                module_source=self.settings.gke_module_source or DEFAULT_MODULE_SOURCE,
+                create_project=self.settings.create_cluster_projects,
+                project_parent=self.settings.cluster_project_parent,
+                billing_account=self.settings.billing_account,
+            )
+        except ValueError as exc:
+            raise RequestValidationError([f"Could not render gke.tf: {exc}"]) from exc
 
     def _build_record(
         self,
