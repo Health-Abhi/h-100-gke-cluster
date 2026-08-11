@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08111f">
+  <meta name="description" content="Self-service GKE Cluster Factory portal">
+  <title>GKE Cluster Factory</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <button class="brand" data-page="overview" aria-label="Open overview">
+        <span class="brand-symbol">⬡</span>
+        <span><strong>GKE</strong><small>Cluster Factory</small></span>
+      </button>
+      <nav aria-label="Primary navigation">
+        <button class="nav-item active" data-page="overview"><span>▦</span>Overview</button>
+        <button class="nav-item" data-page="create"><span>＋</span>New cluster</button>
+        <button class="nav-item" data-page="requests"><span>☷</span>Requests</button>
+        <button class="nav-item" data-page="architecture"><span>⌘</span>Architecture</button>
+      </nav>
+      <div class="factory-health"><span class="pulse"></span><div><strong>Factory online</strong><small>us-west1 policy set</small></div></div>
+      <div class="identity"><span class="avatar">DA</span><div><strong>Developer</strong><small>developer@example.com</small></div></div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <span class="breadcrumb">Platform Engineering / GKE</span>
+        <div class="top-actions"><span class="environment">LOCAL DEMO</span><button id="settingsButton" class="round-button" title="Set local identity">⚙</button></div>
+      </header>
+
+      <section id="page-overview" class="page active">
+        <div class="hero">
+          <div><span class="eyebrow">SELF-SERVICE INFRASTRUCTURE</span><h1>Secure GKE clusters,<br><em>delivered like a product.</em></h1><p>Request an approved blueprint. The factory handles validation, networking, Terraform, security, GitOps, observability, and backups.</p><div class="hero-actions"><button class="button primary" data-page="create">Create a cluster <span>→</span></button><button class="button secondary" data-page="architecture">View architecture</button></div></div>
+          <div class="hero-visual" aria-label="Cluster factory workflow">
+            <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+            <div class="core"><span>⬡</span><strong>GKE</strong><small>REGIONAL</small></div>
+            <div class="satellite satellite-a"><span>✓</span><strong>Policy</strong></div>
+            <div class="satellite satellite-b"><span>⌘</span><strong>GitOps</strong></div>
+            <div class="satellite satellite-c"><span>♜</span><strong>Security</strong></div>
+          </div>
+        </div>
+        <div class="metric-grid">
+          <article class="metric"><span class="metric-icon">⬡</span><div><small>Total requests</small><strong id="totalRequests">0</strong></div><span class="trend">Live</span></article>
+          <article class="metric"><span class="metric-icon">◷</span><div><small>Awaiting review</small><strong id="pendingRequests">0</strong></div><span class="trend amber">PR gate</span></article>
+          <article class="metric"><span class="metric-icon">✓</span><div><small>Ready clusters</small><strong id="readyRequests">0</strong></div><span class="trend green">Healthy</span></article>
+          <article class="metric"><span class="metric-icon">GPU</span><div><small>GPU requests</small><strong id="gpuRequests">0</strong></div><span class="trend purple">H100</span></article>
+        </div>
+        <div class="content-grid">
+          <article class="panel span-two"><div class="panel-header"><div><span class="eyebrow">RECENT ACTIVITY</span><h2>Cluster requests</h2></div><button class="text-button" data-page="requests">View all →</button></div><div id="recentRequests" class="request-list"><div class="empty-mini">No requests yet. Create the first one.</div></div></article>
+          <article class="panel"><span class="eyebrow">STANDARD PATH</span><h2>What happens next</h2><ol class="step-list"><li><span>1</span><div><strong>Validate intent</strong><small>Schema, policy, IP, capacity</small></div></li><li><span>2</span><div><strong>Review the plan</strong><small>Pull request is approval</small></div></li><li><span>3</span><div><strong>Provision and bootstrap</strong><small>Terraform plus Argo CD</small></div></li></ol></article>
+        </div>
+      </section>
+
+      <section id="page-create" class="page">
+        <div class="page-heading"><div><span class="eyebrow">NEW REQUEST</span><h1>Build your cluster</h1><p>Describe the workload. Platform controls are selected and enforced automatically.</p></div><span class="region-badge">● us-west1</span></div>
+        <form id="clusterForm" novalidate>
+          <div class="form-layout">
+            <div class="form-main">
+              <article class="form-card"><div class="card-title"><span>01</span><div><h2>Ownership and purpose</h2><p>Who owns this cluster and why is it needed?</p></div></div><div class="field-grid">
+                <label>Cluster name<input name="name" required pattern="[a-z][a-z0-9-]{2,39}" placeholder="payments-ml-prod-usw1"><small>Lowercase DNS label, up to 40 characters</small></label>
+                <label>Google Cloud project<input name="project_id" required placeholder="prj-payments-ml-prod"></label>
+                <label>Team<input name="team" required placeholder="payments-ml"></label>
+                <label>Owner Google Group<input name="google_group" type="email" required placeholder="gcp-payments-ml@example.com"></label>
+                <label>Cost center<input name="cost_center" required placeholder="cc-1042"></label>
+                <label>Technical contact<input name="technical_contact" type="email" placeholder="ml-platform@example.com"></label>
+                <label class="wide">Workload description<textarea name="description" rows="3" placeholder="What runs here, who uses it, and what business outcome does it support?"></textarea></label>
+              </div></article>
+
+              <article class="form-card"><div class="card-title"><span>02</span><div><h2>Blueprint and workload</h2><p>Choose a supported product profile and workload sensitivity.</p></div></div><div class="field-grid">
+                <label>Blueprint<select name="blueprint" id="blueprint" required></select></label>
+                <label>Environment<select name="environment" id="environment"><option value="dev">Development</option><option value="test">Test</option><option value="stage">Stage</option><option value="prod">Production</option></select></label>
+                <label>Region<select name="region" id="region"></select></label>
+                <label>Data classification<select name="data_classification"><option value="internal">Internal</option><option value="confidential">Confidential</option><option value="restricted">Restricted</option><option value="public">Public</option></select></label>
+                <label>Exposure<select name="exposure"><option value="internal">Internal load balancing</option><option value="none">No inbound exposure</option><option value="external">External, approval required</option></select></label>
+                <label>Network mode<select name="network_mode" id="networkMode"><option value="dedicated">Dedicated VPC</option><option value="shared">Shared VPC</option></select></label>
+                <label id="hostProjectField" class="hidden">Shared VPC host project<input name="host_project_id" placeholder="prj-network-host-prod"></label>
+              </div></article>
+
+              <article class="form-card"><div class="card-title"><span>03</span><div><h2>Capacity and resilience</h2><p>Autoscaling boundaries, availability, and recovery objectives.</p></div></div><div class="field-grid four">
+                <label>System minimum<input name="system_min_nodes" type="number" min="1" value="3"></label>
+                <label>System maximum<input name="system_max_nodes" type="number" min="1" value="9"></label>
+                <label>General minimum<input name="general_min_nodes" type="number" min="0" value="3"></label>
+                <label>General maximum<input name="general_max_nodes" type="number" min="1" value="60"></label>
+                <label>Backup tier<select name="backup_tier"><option value="bronze">Bronze, daily / 7 days</option><option value="silver">Silver, 6 hours / 30 days</option><option value="gold">Gold, hourly / 90 days</option><option value="none">None, non-production only</option></select></label>
+                <label>Retention days<input name="retention_days" type="number" min="1" max="365" value="90"></label>
+                <label>Target RPO, minutes<input name="target_rpo_minutes" type="number" min="60" value="60"></label>
+                <label>Application replicas<input name="application_replicas" type="number" min="1" value="3"></label>
+              </div><div class="toggle-row"><label class="toggle"><input name="deletion_protection" type="checkbox" checked><span></span>Deletion protection</label><label class="toggle"><input name="private_endpoint_only" type="checkbox" checked><span></span>Private control-plane endpoint</label><label class="toggle"><input name="create_nat" type="checkbox" checked><span></span>Managed Cloud NAT</label></div><div id="authorizedCidrsField" class="field-grid authorized-cidrs hidden"><label class="wide">Authorized control-plane CIDRs<textarea name="authorized_cidrs" placeholder="203.0.113.0/24, 198.51.100.10/32"></textarea><small>Required when the public control-plane endpoint is enabled. Use strict IPv4 CIDRs separated by commas or new lines.</small></label></div></article>
+
+              <article id="gpuCard" class="form-card gpu-card hidden"><div class="card-title"><span>04</span><div><h2>NVIDIA H100 capacity</h2><p>Dedicated, tainted accelerator nodes for production AI workloads.</p></div></div><div class="field-grid four">
+                <label>Machine type<select name="gpu_machine_type"><option value="a3-highgpu-8g">a3-highgpu-8g</option></select></label>
+                <label>H100 GPUs per node<input name="accelerator_count" type="number" value="8" readonly></label>
+                <label>Minimum nodes<input name="gpu_minimum_nodes" type="number" min="1" value="1"></label>
+                <label>Maximum nodes<input name="gpu_maximum_nodes" type="number" min="1" value="4"></label>
+                <label>Provisioning model<select name="provisioning_model"><option value="reservation">Reservation</option><option value="standard">Standard on-demand</option><option value="spot">Spot</option><option value="flex-start">Flex-start</option></select></label>
+                <label>Reservation name<input name="reservation_name" placeholder="payments-h100-prod"></label>
+                <label class="wide">GPU zones<input name="gpu_zones" value="us-west1-a,us-west1-b" placeholder="us-west1-a,us-west1-b"></label>
+              </div></article>
+            </div>
+
+            <aside class="review-card"><span class="eyebrow">LIVE REVIEW</span><h2>Factory guardrails</h2><div class="guardrail"><span>✓</span><div><strong>Regional control plane</strong><small>Three-zone availability</small></div></div><div class="guardrail"><span>✓</span><div><strong>Private nodes</strong><small>No external node IPs</small></div></div><div class="guardrail"><span>✓</span><div><strong>Workload Identity</strong><small>No service account keys</small></div></div><div class="guardrail"><span>✓</span><div><strong>Dataplane V2</strong><small>Network policy enforcement</small></div></div><div class="guardrail"><span>✓</span><div><strong>GitOps bootstrap</strong><small>Argo CD and baseline policy</small></div></div><hr><div id="validationBox" class="validation-box"><strong>Ready to validate</strong><small>The API will return policy errors and warnings before creating the request.</small></div><button type="submit" class="button primary full" id="submitButton">Validate and submit →</button><small class="form-note">In GitHub mode this opens a pull request. Merge is the production approval gate.</small></aside>
+          </div>
+        </form>
+      </section>
+
+      <section id="page-requests" class="page">
+        <div class="page-heading"><div><span class="eyebrow">LIFECYCLE</span><h1>Cluster requests</h1><p>Track ownership, approval, provisioning, and handoff.</p></div><div><button class="button secondary" id="refreshRequests">Refresh</button><button class="button primary" data-page="create">＋ New request</button></div></div>
+        <article class="panel"><div class="table-toolbar"><input id="requestSearch" type="search" placeholder="Search clusters, teams, projects..."><select id="statusFilter"><option value="all">All statuses</option><option value="REQUESTED">Requested</option><option value="READY">Ready</option><option value="FAILED">Failed</option></select></div><div class="table-wrap"><table><thead><tr><th>Cluster</th><th>Environment</th><th>Owner</th><th>Blueprint</th><th>GPU</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="requestTable"></tbody></table></div><div id="requestEmpty" class="empty-state hidden"><span>⬡</span><h3>No matching requests</h3><p>Change the filters or create a cluster request.</p></div></article>
+      </section>
+
+      <section id="page-architecture" class="page">
+        <div class="page-heading"><div><span class="eyebrow">REFERENCE ARCHITECTURE</span><h1>From intent to running GKE</h1><p>Every stage is versioned, policy-controlled, observable, and repeatable.</p></div><span class="region-badge">Secure by default</span></div>
+        <article class="architecture-board">
+          <div class="arch-lane"><small>REQUEST</small><div class="arch-node blue"><span>▣</span><strong>Self-service portal</strong><em>Approved inputs only</em></div></div><div class="arch-arrow">→</div>
+          <div class="arch-lane"><small>CONTROL</small><div class="arch-node cyan"><span>✓</span><strong>Schema and policy</strong><em>IPAM, quota, cost, security</em></div></div><div class="arch-arrow">→</div>
+          <div class="arch-lane"><small>APPROVAL</small><div class="arch-node violet"><span>⌘</span><strong>Git pull request</strong><em>Plan and human review</em></div></div><div class="arch-arrow">→</div>
+          <div class="arch-lane"><small>PROVISION</small><div class="arch-node green"><span>TF</span><strong>Terraform</strong><em>Network, IAM, GKE, backup</em></div></div><div class="arch-arrow">→</div>
+          <div class="arch-lane"><small>OPERATE</small><div class="arch-node orange"><span>⬡</span><strong>Argo CD</strong><em>Policies, add-ons, workloads</em></div></div>
+        </article>
+        <div class="architecture-details">
+          <article class="panel"><span class="eyebrow">GCP FOUNDATION</span><h2>What Terraform creates</h2><ul class="check-list"><li>VPC-native regional GKE in us-west1</li><li>Private nodes and private control-plane endpoint</li><li>Secondary Pod and Service IP ranges</li><li>Cloud Router, NAT, Private Google Access</li><li>Least-privilege node service account</li><li>CPU pools and optional isolated H100 pool</li><li>Fleet membership and Backup for GKE plan</li></ul></article>
+          <article class="panel"><span class="eyebrow">CLUSTER BASELINE</span><h2>What GitOps installs</h2><ul class="check-list"><li>Namespaces and ownership labels</li><li>Default-deny ingress and egress policy</li><li>Pod Security admission labels</li><li>ValidatingAdmissionPolicy guardrails</li><li>Managed Prometheus PodMonitoring examples</li><li>Resource quotas and limit ranges</li><li>Root Argo CD application</li></ul></article>
+          <article class="panel"><span class="eyebrow">LIFECYCLE</span><h2>How change stays safe</h2><ul class="check-list"><li>CODEOWNERS protects production requests</li><li>Pull requests run schema and Terraform plans</li><li>Main branch applies use Google WIF</li><li>Connect Gateway bootstraps private clusters</li><li>Argo CD continuously reconciles desired state</li><li>Drift and failed syncs trigger alerts</li><li>Deletion requires a separate approved workflow</li></ul></article>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="identityDialog"><form method="dialog"><h2>Local identity</h2><p>This header simulates the email normally supplied by IAP.</p><label>Email<input id="identityEmail" type="email" value="developer@example.com"></label><div class="dialog-actions"><button value="cancel" class="button secondary">Cancel</button><button value="save" id="saveIdentity" class="button primary">Save</button></div></form></dialog>
+  <dialog id="provisionDialog" class="provision-dialog">
+    <h2>Provisioning <span id="provisionClusterName"></span></h2>
+    <p id="provisionSubtitle" class="form-note">Running Terraform against Google Cloud. This can take 10–20 minutes.</p>
+    <pre id="provisionLog" class="provision-log"></pre>
+    <div class="dialog-actions"><button id="closeProvisionDialog" class="button secondary">Close</button></div>
+  </dialog>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+platform_project_id    = "gcpproject-490711"
+create_platform_project = false
+region                 = "us-west1"
+github_owner           = "Health-Abhi"
+github_repository      = "gke-cluster-factory"

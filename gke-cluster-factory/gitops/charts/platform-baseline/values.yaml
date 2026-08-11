@@ -1,0 +1,24 @@
+cluster:
+  name: replace-me
+environment: dev
+workloadExposure: internal
+access:
+  team: application-team
+  ownerGroup: application-team@example.com
+  platformAdminGroup: gke-platform-admins@example.com
+  # "Group" for real Google Groups (Cloud Identity/Workspace + Google Groups RBAC enabled),
+  # "User" for an individual account (e.g. personal Gmail with no org).
+  iamPrincipalType: Group
+gitops:
+  repoURL: https://github.com/example/gke-cluster-factory.git
+namespace:
+  cpuRequests: "20"
+  cpuLimits: "40"
+  memoryRequests: 80Gi
+  memoryLimits: 160Gi
+  pods: "200"
+policy:
+  allowedRegistries:
+    - us-west1-docker.pkg.dev/
+    - gcr.io/google-containers/
+    - registry.k8s.io/

@@ -1,0 +1,102 @@
+name: Cluster request plan
+
+on:
+  pull_request:
+    paths:
+      - "requests/**/*.yaml"
+      - "terraform/**"
+      - "scripts/**"
+      - "config/**"
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    environment: cluster-plan
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Find and plan affected requests
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          CREATE_CLUSTER_PROJECTS: ${{ vars.CREATE_CLUSTER_PROJECTS }}
+          CLUSTER_PROJECT_PARENT: ${{ vars.CLUSTER_PROJECT_PARENT }}
+          BILLING_ACCOUNT: ${{ vars.BILLING_ACCOUNT }}
+          GKE_SECURITY_GROUP: ${{ vars.GKE_SECURITY_GROUP }}
+          PLATFORM_ADMIN_GROUP: ${{ vars.PLATFORM_ADMIN_GROUP }}
+          IAM_PRINCIPAL_TYPE: ${{ vars.IAM_PRINCIPAL_TYPE }}
+          ENABLE_GOOGLE_GROUPS_RBAC: ${{ vars.ENABLE_GOOGLE_GROUPS_RBAC }}
+        run: |
+          set -euo pipefail
+          mapfile -t REQUESTS < <(
+            git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- 'requests/**/*.yaml' |
+              grep -E '^requests/(dev|test|stage|prod)/.+\.yaml$' || true
+          )
+
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE '^(terraform|scripts|config)/'; then
+            mapfile -t REQUESTS < <(find requests -mindepth 2 -maxdepth 2 -name '*.yaml' -print | sort)
+          fi
+
+          if [[ ${#REQUESTS[@]} -eq 0 ]]; then
+            echo "No cluster requests require a plan." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          ./scripts/validate_request_set.py
+
+          for request in "${REQUESTS[@]}"; do
+            ./scripts/validate_request.py "$request"
+            ./scripts/preflight_gcp.sh "$request"
+            cluster=$(python -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["metadata"]["name"])' "$request")
+            tfvars="$(mktemp --suffix=.json)"
+            ./scripts/render_tfvars.py "$request" --output "$tfvars"
+
+            terraform -chdir=terraform/cluster init -reconfigure \
+              -backend-config="bucket=${TF_STATE_BUCKET}" \
+              -backend-config="prefix=gke-clusters/${cluster}"
+
+            extra_args=()
+            if [[ "${CREATE_CLUSTER_PROJECTS:-false}" == "true" ]]; then
+              extra_args+=("-var=create_project=true")
+              extra_args+=("-var=project_parent=${CLUSTER_PROJECT_PARENT}")
+              extra_args+=("-var=billing_account=${BILLING_ACCOUNT}")
+            fi
+
+            terraform -chdir=terraform/cluster plan \
+              -input=false \
+              -lock-timeout=5m \
+              -var-file="$tfvars" \
+              "${extra_args[@]}" \
+              -out="/tmp/${cluster}.tfplan"
+
+            {
+              echo "### Terraform plan: ${cluster}"
+              echo '```text'
+              terraform -chdir=terraform/cluster show -no-color "/tmp/${cluster}.tfplan" | tail -n 80
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            rm -f "$tfvars"
+          done

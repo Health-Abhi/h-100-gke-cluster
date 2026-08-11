@@ -1,0 +1,39 @@
+steps:
+  - name: python:3.13-slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        pip install --no-cache-dir -r requirements-dev.txt
+        ruff check app tests scripts
+        pytest -q
+        ./scripts/validate_all.sh
+
+  - name: alpine/helm:3.17.3
+    entrypoint: sh
+    args:
+      - -ceu
+      - |
+        helm lint gitops/charts/platform-baseline
+        helm template platform-baseline gitops/charts/platform-baseline \
+          --set cluster.name=ci \
+          --set access.team=ci-team \
+          --set access.ownerGroup=ci-team@example.com \
+          --set access.platformAdminGroup=platform@example.com \
+          --set gitops.repoURL=https://github.com/example/factory.git \
+          --set environment=prod \
+          --set workloadExposure=internal > /workspace/platform-baseline.yaml
+
+  - name: hashicorp/terraform:1.15.8
+    entrypoint: sh
+    args:
+      - -ceu
+      - |
+        terraform fmt -recursive -check terraform
+        for directory in terraform/bootstrap terraform/cluster terraform/factory-app; do
+          terraform -chdir="$directory" init -backend=false
+          terraform -chdir="$directory" validate
+        done
+
+options:
+  logging: CLOUD_LOGGING_ONLY

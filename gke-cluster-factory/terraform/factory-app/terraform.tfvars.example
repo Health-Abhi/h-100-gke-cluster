@@ -1,0 +1,7 @@
+project_id             = "prj-platform-prod"
+region                 = "us-west1"
+container_image        = "us-west1-docker.pkg.dev/prj-platform-prod/gke-cluster-factory/portal@sha256:replace"
+github_owner           = "your-github-org"
+github_repository      = "gke-cluster-factory"
+invoker_group           = "gke-platform-requesters@example.com"
+deletion_protection    = true

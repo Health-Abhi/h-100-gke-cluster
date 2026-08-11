@@ -1,0 +1,40 @@
+name: Create GCS Bucket
+
+on:
+  workflow_dispatch:
+    inputs:
+      bucket_name:
+        description: 'Bucket purpose/name'
+        required: true
+        type: string
+
+env:
+  PROJECT_NAME: "gcp-project"   # hardcoded
+  LOCATION: "us-central1"              # hardcoded — used in both name and -l flag
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  create-bucket:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/599893116274/locations/global/workloadIdentityPools/github-pool-bucket/providers/github-provider"
+          service_account: "github-actions-bucket@gcpproject-490711.iam.gserviceaccount.com"
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Create bucket
+        run: |
+          RAW_NAME="${PROJECT_NAME}-${LOCATION}-${{ inputs.bucket_name }}"
+          LOWER_NAME=$(echo "$RAW_NAME" | tr '[:upper:]' '[:lower:]')
+          CLEAN_NAME=$(echo "$LOWER_NAME" | tr ' _' '-' | tr -s '-')
+          FINAL_NAME=$(echo "$CLEAN_NAME" | sed 's/[^a-z0-9-]//g')
+
+          echo "Final bucket name: $FINAL_NAME"
+          gsutil mb -p gcpproject-490711 -l ${LOCATION} gs://${FINAL_NAME}/

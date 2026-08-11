@@ -1,0 +1,227 @@
+name: Reconcile clusters
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "requests/**/*.yaml"
+      - "terraform/**"
+      - "gitops/**"
+      - "scripts/**"
+      - "config/**"
+  workflow_dispatch:
+    inputs:
+      request:
+        description: Optional request file such as requests/prod/example.yaml
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: gke-cluster-factory-writes
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: cluster-production
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          install_components: gke-gcloud-auth-plugin,kubectl
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Reconcile affected requests
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          CREATE_CLUSTER_PROJECTS: ${{ vars.CREATE_CLUSTER_PROJECTS }}
+          CLUSTER_PROJECT_PARENT: ${{ vars.CLUSTER_PROJECT_PARENT }}
+          BILLING_ACCOUNT: ${{ vars.BILLING_ACCOUNT }}
+          GITOPS_REPO_URL: https://github.com/${{ github.repository }}.git
+          GITOPS_REVISION: main
+          GITOPS_USERNAME: ${{ secrets.ARGOCD_GIT_USERNAME }}
+          GITOPS_TOKEN: ${{ secrets.ARGOCD_GIT_TOKEN }}
+          GKE_SECURITY_GROUP: ${{ vars.GKE_SECURITY_GROUP }}
+          PLATFORM_ADMIN_GROUP: ${{ vars.PLATFORM_ADMIN_GROUP }}
+          IAM_PRINCIPAL_TYPE: ${{ vars.IAM_PRINCIPAL_TYPE }}
+          ENABLE_GOOGLE_GROUPS_RBAC: ${{ vars.ENABLE_GOOGLE_GROUPS_RBAC }}
+          GKE_MODULE_SOURCE: ${{ vars.GKE_MODULE_SOURCE }}
+        run: |
+          set -euo pipefail
+
+          request_input="${{ github.event.inputs.request || '' }}"
+          if [[ -n "$request_input" ]]; then
+            REQUESTS=("$request_input")
+          else
+            before="${{ github.event.before }}"
+            if [[ -z "$before" || "$before" =~ ^0+$ ]]; then
+              mapfile -t REQUESTS < <(find requests -mindepth 2 -maxdepth 2 -name '*.yaml' -print | sort)
+            else
+              mapfile -t REQUESTS < <(
+                git diff --name-only "$before" "${{ github.sha }}" -- 'requests/**/*.yaml' |
+                  grep -E '^requests/(dev|test|stage|prod)/.+\.yaml$' || true
+              )
+              if git diff --name-only "$before" "${{ github.sha }}" | grep -qE '^(terraform|gitops|scripts|config)/'; then
+                mapfile -t REQUESTS < <(find requests -mindepth 2 -maxdepth 2 -name '*.yaml' -print | sort)
+              fi
+            fi
+          fi
+
+          if [[ ${#REQUESTS[@]} -eq 0 ]]; then
+            echo "No requests to reconcile."
+            exit 0
+          fi
+
+          ./scripts/validate_request_set.py
+
+          failed_request=""
+          failed_code=0
+
+          for request in "${REQUESTS[@]}"; do
+            set +e
+            (
+              set -euo pipefail
+              ./scripts/set_request_status.py "$request" PROVISIONING \
+                --condition Reconciled --status Unknown --message "Infrastructure reconciliation started"
+              ./scripts/validate_request.py "$request"
+              ./scripts/preflight_gcp.sh "$request"
+
+              cluster=$(python -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["metadata"]["name"])' "$request")
+              project=$(python -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["spec"]["project_id"])' "$request")
+              region=$(python -c 'import sys,yaml; print(yaml.safe_load(open(sys.argv[1]))["spec"]["region"])' "$request")
+              tfvars=$(mktemp --suffix=.json)
+              trap 'rm -f "$tfvars"' EXIT
+              ./scripts/render_tfvars.py "$request" --output "$tfvars"
+
+              terraform -chdir=terraform/cluster init -reconfigure \
+                -backend-config="bucket=${TF_STATE_BUCKET}" \
+                -backend-config="prefix=gke-clusters/${cluster}"
+
+              extra_args=()
+              if [[ "${CREATE_CLUSTER_PROJECTS:-false}" == "true" ]]; then
+                extra_args+=("-var=create_project=true")
+                extra_args+=("-var=project_parent=${CLUSTER_PROJECT_PARENT}")
+                extra_args+=("-var=billing_account=${BILLING_ACCOUNT}")
+              fi
+
+              terraform -chdir=terraform/cluster apply \
+                -input=false \
+                -auto-approve \
+                -lock-timeout=10m \
+                -var-file="$tfvars" \
+                "${extra_args[@]}"
+
+              gke_tf_args=(./scripts/render_gke_tf.py "$request")
+              if [[ "${CREATE_CLUSTER_PROJECTS:-false}" == "true" ]]; then
+                gke_tf_args+=(
+                  --create-project
+                  --project-parent "${CLUSTER_PROJECT_PARENT}"
+                  --billing-account "${BILLING_ACCOUNT}"
+                )
+              fi
+              "${gke_tf_args[@]}"
+
+              membership=$(terraform -chdir=terraform/cluster output -raw fleet_membership)
+              gcloud container fleet memberships get-credentials "$membership" \
+                --project "$project" \
+                --location "$region"
+
+              export REQUEST_FILE="$request"
+              ./scripts/bootstrap_cluster.sh
+
+              kubectl wait --for=condition=Ready nodes --all --timeout=15m
+              kubectl get nodes -o wide
+              kubectl -n argocd wait \
+                --for=jsonpath='{.status.sync.status}'=Synced \
+                application/platform-baseline --timeout=15m
+              kubectl -n argocd wait \
+                --for=jsonpath='{.status.health.status}'=Healthy \
+                application/platform-baseline --timeout=15m
+
+              if python -c 'import sys,yaml; raise SystemExit(not yaml.safe_load(open(sys.argv[1]))["spec"]["gpu"]["enabled"])' "$request"; then
+                kubectl get nodes -l accelerator=nvidia-h100-80gb
+              fi
+
+              ./scripts/set_request_status.py "$request" READY \
+                --condition Reconciled --status True \
+                --message "Infrastructure and GitOps baseline reconciled"
+            )
+            request_code=$?
+            set -e
+
+            if [[ $request_code -ne 0 ]]; then
+              ./scripts/set_request_status.py "$request" FAILED \
+                --condition Reconciled --status False \
+                --message "Reconciliation failed. Review the GitHub Actions run and cloud operation logs."
+              failed_request="$request"
+              failed_code=$request_code
+              break
+            fi
+          done
+
+          if [[ -n "$failed_request" ]]; then
+            echo "Reconciliation failed for ${failed_request}." >&2
+            exit "$failed_code"
+          fi
+
+      - name: Commit reconciliation status
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          [[ -d .git ]] || exit 0
+          mkdir -p clusters
+          # -N (intent-to-add) makes brand-new files under clusters/ show up in
+          # `git diff`/`git diff --quiet` below instead of being silently
+          # skipped as untracked.
+          git add -N clusters
+          if git diff --quiet -- requests clusters; then
+            exit 0
+          fi
+          git config user.name "gke-cluster-factory[bot]"
+          git config user.email "gke-cluster-factory@users.noreply.github.com"
+
+          # Preserve the status + gke.tf changes as a patch instead of a commit so
+          # we can re-apply them cleanly on top of whatever main looks like right
+          # now. Committing first and rebasing after (the old approach) fails hard
+          # if main moved in the meantime, since a rebase replays a fixed diff.
+          git diff -- requests clusters > /tmp/status.patch
+
+          attempt=0
+          until git fetch origin main \
+             && git reset --hard origin/main \
+             && git apply --3way /tmp/status.patch \
+             && git add requests clusters \
+             && git commit -m "chore: update cluster reconciliation status and gke.tf [skip ci]" \
+             && git push origin HEAD:main
+          do
+            attempt=$((attempt + 1))
+            if [[ $attempt -ge 5 ]]; then
+              echo "::error::Could not publish reconciliation status after $attempt attempts" >&2
+              exit 1
+            fi
+            echo "Push race detected, retrying (attempt $attempt)..." >&2
+            sleep $((attempt * 5))
+          done

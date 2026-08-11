@@ -1,0 +1,33 @@
+{{- if eq .Values.environment "prod" }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: factory-production-availability
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        platform.example.com/policy: strict
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets"]
+  validations:
+    - expression: has(object.spec.replicas) && object.spec.replicas >= 3
+      message: production Deployments and StatefulSets require at least three replicas
+    - expression: >-
+        has(object.spec.template.spec.topologySpreadConstraints) &&
+        object.spec.template.spec.topologySpreadConstraints.exists(t,
+          t.topologyKey == 'topology.kubernetes.io/zone' && t.whenUnsatisfiable == 'DoNotSchedule')
+      message: production workloads require a DoNotSchedule topology spread constraint across zones
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: factory-production-availability
+spec:
+  policyName: factory-production-availability
+  validationActions: [Deny, Audit]
+{{- end }}

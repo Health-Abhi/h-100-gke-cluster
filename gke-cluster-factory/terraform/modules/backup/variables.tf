@@ -1,0 +1,12 @@
+variable "project_id" { type = string }
+variable "cluster_id" { type = string }
+variable "cluster_name" { type = string }
+variable "region" { type = string }
+variable "labels" { type = map(string) }
+variable "retention_days" { type = number }
+variable "delete_lock_days" { type = number }
+variable "target_rpo_minutes" { type = number }
+variable "include_volume_data" { type = bool }
+variable "include_secrets" { type = bool }
+variable "kms_key_id" { type = string }
+variable "deletion_protection" { type = bool }

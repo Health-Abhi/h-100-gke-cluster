@@ -1,0 +1,14 @@
+version: 1
+pools:
+  nodes:
+    cidr: 10.64.0.0/10
+    allocation_prefix: 24
+  pods:
+    cidr: 10.128.0.0/9
+    allocation_prefix: 16
+  services:
+    cidr: 172.20.0.0/14
+    allocation_prefix: 20
+  control_planes:
+    cidr: 172.24.0.0/16
+    allocation_prefix: 28

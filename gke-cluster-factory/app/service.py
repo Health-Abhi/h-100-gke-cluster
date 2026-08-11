@@ -8,6 +8,7 @@ import yaml
 from app.catalog import CatalogError, get_profile, load_catalog
 from app.config import Settings
 from app.github import GitHubClient
+from app.gke_tf import DEFAULT_MODULE_SOURCE, render_from_document
 from app.ipam import allocate_network, load_ipam_config
 from app.models import (
     BackupTier,
@@ -57,7 +58,14 @@ class ClusterFactoryService:
 
     async def records(self) -> list[dict[str, Any]]:
         if self.github:
-            return await self.github.list_request_records()
+            merged = await self.github.list_request_records()
+            existing_names = {item.get("metadata", {}).get("name") for item in merged}
+            pending = await self.github.list_pending_pull_requests()
+            for record in pending:
+                if record.get("metadata", {}).get("name") in existing_names:
+                    continue
+                merged.append(record)
+            return merged
         return self.local_repository.list_records()
 
     def validate(self, request: ClusterRequestCreate) -> ValidationResult:
@@ -170,23 +178,27 @@ class ClusterFactoryService:
         record = self._build_record(request, validation, resolved_network, actor)
         yaml_text = yaml.safe_dump(record, sort_keys=False, allow_unicode=True)
         request_path = f"requests/{request.environment.value}/{request.name}.yaml"
-        commit_url: str | None = None
+        pull_request_url: str | None = None
 
+        gke_tf_path, gke_tf_content = self._render_gke_tf(record)
         if self.github:
-            commit_url = await self.github.create_request_direct_commit(
+            pull_request_url = await self.github.create_request_pull_request(
                 request_path=request_path,
                 yaml_text=yaml_text,
                 cluster_name=request.name,
                 actor=actor,
+                extra_files={gke_tf_path: gke_tf_content},
             )
-            status = "SUBMITTED"
-            message = "Request committed directly to main and queued for reconciliation"
+            status = "PENDING_REVIEW"
+            message = "Request validated and a pull request was opened"
         else:
             self.local_repository.write_record(
                 request.environment.value,
                 request.name,
                 yaml_text,
             )
+            (self.settings.root_dir / gke_tf_path).parent.mkdir(parents=True, exist_ok=True)
+            (self.settings.root_dir / gke_tf_path).write_text(gke_tf_content, encoding="utf-8")
             status = "LOCAL_CREATED"
             message = "Request validated and written to the local requests directory"
 
@@ -195,7 +207,7 @@ class ClusterFactoryService:
             status=status,
             message=message,
             request_path=request_path,
-            commit_url=commit_url,
+            pull_request_url=pull_request_url,
             resolved_network=resolved_network,
         )
 
@@ -233,11 +245,24 @@ class ClusterFactoryService:
                     owner_team=spec.get("owner", {}).get("team", "unknown"),
                     status=status.get("phase", "REQUESTED"),
                     created_at=metadata.get("created_at", ""),
-                    commit_url=status.get("commit_url"),
+                    pull_request_url=status.get("pull_request_url"),
                     gpu_enabled=bool(spec.get("gpu", {}).get("enabled")),
                 )
             )
         return sorted(summaries, key=lambda item: item.created_at, reverse=True)
+
+    def _render_gke_tf(self, record: dict[str, Any]) -> tuple[str, str]:
+        try:
+            return render_from_document(
+                record,
+                self.settings.root_dir,
+                module_source=self.settings.gke_module_source or DEFAULT_MODULE_SOURCE,
+                create_project=self.settings.create_cluster_projects,
+                project_parent=self.settings.cluster_project_parent,
+                billing_account=self.settings.billing_account,
+            )
+        except ValueError as exc:
+            raise RequestValidationError([f"Could not render gke.tf: {exc}"]) from exc
 
     def _build_record(
         self,
