@@ -1,9 +1,14 @@
 name: Publish gke.tf to nonprod
 
-# Runs after request-apply.yml commits generated clusters/<project>_<cluster>/gke.tf
-# files to main. For every cluster folder that changed, it opens a pull request
-# against the `nonprod` branch of the downstream GitOps repository with a copy
-# of that folder.
+# Flow:
+#   1. A user fills out the portal, which commits a new/updated
+#      clusters/<project>_<cluster>/gke.tf straight onto `main` here.
+#   2. That push triggers this workflow, which copies every cluster folder
+#      that changed/was added into a single, PERSISTENT branch called
+#      `cluster-list` in the downstream repo (h100-gke-automation).
+#   3. A single long-lived PR from `cluster-list` -> `nonprod` collects all
+#      of these folders. If the PR already exists, pushing more commits to
+#      `cluster-list` just updates it - we don't open a new PR each time.
 
 on:
   push:
@@ -22,7 +27,8 @@ permissions:
 
 env:
   TARGET_REPO: ${{ vars.GKE_TF_TARGET_REPO || 'Health-Abhi/h100-gke-automation' }}
-  TARGET_BRANCH: ${{ vars.GKE_TF_TARGET_BRANCH || 'nonprod' }}
+  TARGET_BASE_BRANCH: ${{ vars.GKE_TF_TARGET_BRANCH || 'nonprod' }}
+  TARGET_WORK_BRANCH: ${{ vars.GKE_TF_WORK_BRANCH || 'cluster-list' }}
 
 jobs:
   publish:
@@ -32,7 +38,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine changed cluster folders
+      - name: Determine changed/added cluster folders
         id: changed
         run: |
           set -euo pipefail
@@ -43,10 +49,13 @@ jobs:
           else
             before="${{ github.event.before }}"
             if [[ -z "$before" || "$before" =~ ^0+$ ]]; then
+              # First push seen (or no prior sha) -> publish every existing folder.
               mapfile -t FOLDERS < <(find clusters -mindepth 1 -maxdepth 1 -type d -print | sort)
             else
+              # Covers both a modified gke.tf in an existing folder AND a
+              # brand-new folder the portal just added (shows up as "added").
               mapfile -t FOLDERS < <(
-                git diff --name-only "$before" "${{ github.sha }}" -- 'clusters/**/gke.tf' |
+                git diff --name-only --diff-filter=ACMR "$before" "${{ github.sha }}" -- 'clusters/**/gke.tf' |
                   sed -E 's#^(clusters/[^/]+)/.*#\1#' | sort -u
               )
             fi
@@ -68,7 +77,7 @@ jobs:
             echo "EOF_FOLDERS"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Open pull request(s) against ${{ env.TARGET_BRANCH }}
+      - name: Publish to ${{ env.TARGET_WORK_BRANCH }} and ensure a PR exists
         if: steps.changed.outputs.folders != ''
         env:
           GH_TOKEN: ${{ secrets.GKE_TF_PUBLISH_TOKEN }}
@@ -82,14 +91,25 @@ jobs:
           fi
 
           workdir=$(mktemp -d)
-          git clone --branch "$TARGET_BRANCH" --single-branch \
-            "https://x-access-token:${GH_TOKEN}@github.com/${TARGET_REPO}.git" "$workdir/target"
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${TARGET_REPO}.git" "$workdir/target"
+          cd "$workdir/target"
 
-          git config --global user.name "gke-cluster-factory[bot]"
-          git config --global user.email "gke-cluster-factory@users.noreply.github.com"
+          git config user.name "gke-cluster-factory[bot]"
+          git config user.email "gke-cluster-factory@users.noreply.github.com"
 
-          short_sha="${GITHUB_SHA:0:12}"
+          # Reuse the cluster-list branch if it already exists (so folders
+          # accumulate on it); otherwise start it fresh from the base branch.
+          if git ls-remote --exit-code --heads origin "$TARGET_WORK_BRANCH" >/dev/null 2>&1; then
+            git fetch origin "$TARGET_WORK_BRANCH"
+            git checkout -B "$TARGET_WORK_BRANCH" "origin/$TARGET_WORK_BRANCH"
+          else
+            git fetch origin "$TARGET_BASE_BRANCH"
+            git checkout -B "$TARGET_WORK_BRANCH" "origin/$TARGET_BASE_BRANCH"
+          fi
 
+          cd - >/dev/null
+
+          names=()
           while IFS= read -r folder; do
             [[ -z "$folder" ]] && continue
             if [[ ! -d "$folder" ]]; then
@@ -98,28 +118,43 @@ jobs:
             fi
 
             name=$(basename "$folder")
-            branch="gke-tf/${name}-${short_sha}"
-
-            (cd "$workdir/target" && git checkout -B "$branch" "origin/${TARGET_BRANCH}")
+            names+=("$name")
 
             mkdir -p "$workdir/target/$folder"
             rsync -a --delete "$folder"/ "$workdir/target/$folder"/
 
-            pushd "$workdir/target" >/dev/null
-            git add "$folder"
-            if git diff --cached --quiet; then
-              echo "No effective changes for $folder, skipping PR."
-              popd >/dev/null
-              continue
-            fi
-            git commit -m "chore: publish ${name} gke.tf (source ${short_sha})"
-            git push origin "$branch"
+            (cd "$workdir/target" && git add "$folder")
+          done <<< "$FOLDERS"
+
+          cd "$workdir/target"
+
+          if git diff --cached --quiet; then
+            echo "No effective changes for any folder, nothing to push."
+            exit 0
+          fi
+
+          short_sha="${GITHUB_SHA:0:12}"
+          git commit -m "chore: publish gke.tf for ${#names[@]} cluster folder(s) (source ${short_sha})"
+          git push origin "$TARGET_WORK_BRANCH"
+
+          existing_pr=$(gh pr list \
+            --repo "$TARGET_REPO" \
+            --head "$TARGET_WORK_BRANCH" \
+            --base "$TARGET_BASE_BRANCH" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+
+          if [[ -n "$existing_pr" ]]; then
+            echo "PR #$existing_pr already open from $TARGET_WORK_BRANCH -> $TARGET_BASE_BRANCH, pushed new commit onto it."
+            gh pr comment "$existing_pr" --repo "$TARGET_REPO" \
+              --body "$(printf 'Added %s cluster folder(s) at commit %s:\n%s' "${#names[@]}" "$GITHUB_SHA" "$(printf -- '- `%s`\n' "${names[@]}")")"
+          else
+            body=$(printf -- '- `%s`\n' "${names[@]}")
             gh pr create \
               --repo "$TARGET_REPO" \
-              --base "$TARGET_BRANCH" \
-              --head "$branch" \
-              --title "Publish ${name} gke.tf" \
-              --body "Automated update of \`${folder}/gke.tf\`, generated by gke-cluster-factory at commit ${GITHUB_SHA}." \
-              || echo "::warning::Could not open PR for $folder (it may already be open)."
-            popd >/dev/null
-          done <<< "$FOLDERS"
+              --base "$TARGET_BASE_BRANCH" \
+              --head "$TARGET_WORK_BRANCH" \
+              --title "Publish cluster gke.tf folders" \
+              --body "$(printf 'Automated cluster gke.tf publishing from h-100-gke-cluster. This PR accumulates cluster folders as they are added.\n\nLatest commit: %s\n\nFolders added in this update:\n%s' "$GITHUB_SHA" "$body")"
+          fi
