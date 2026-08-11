@@ -110,10 +110,10 @@ jobs:
             name=$(basename "$folder")
             names+=("$name")
 
-            mkdir -p "$workdir/target/$folder"
-            rsync -a --delete "$folder"/ "$workdir/target/$folder"/
+            mkdir -p "$workdir/target/$name"
+            rsync -a --delete "$folder"/ "$workdir/target/$name"/
 
-            (cd "$workdir/target" && git add "$folder")
+            (cd "$workdir/target" && git add "$name")
           done <<< "$FOLDERS"
 
           cd "$workdir/target"
