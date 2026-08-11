@@ -256,7 +256,7 @@ class RequestSummary(BaseModel):
     owner_team: str
     status: str
     created_at: str
-    pull_request_url: str | None = None
+    commit_url: str | None = None
     gpu_enabled: bool = False
 
 
@@ -265,7 +265,7 @@ class RequestSubmission(BaseModel):
     status: str
     message: str
     request_path: str
-    pull_request_url: str | None = None
+    commit_url: str | None = None
     resolved_network: ResolvedNetwork
 
 

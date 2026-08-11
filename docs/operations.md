@@ -5,7 +5,7 @@
 | Phase | Meaning |
 |---|---|
 | `REQUESTED` | Schema and platform policy passed |
-| `PENDING_REVIEW` | Portal opened a pull request |
+| `SUBMITTED` | Portal committed the request directly to `main` |
 | `PROVISIONING` | Terraform apply started |
 | `READY` | Infrastructure and baseline reconciliation completed |
 | `FAILED` | Plan, apply, GitOps, or destroy reconciliation requires operator attention |

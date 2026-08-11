@@ -1,6 +1,6 @@
 # GKE Cluster Factory
 
-A runnable reference implementation for a self-service Google Kubernetes Engine cluster platform. Application teams request an approved cluster blueprint through a web portal. Git records the request, pull requests provide review and approval, Terraform provisions the Google Cloud resources, and Argo CD applies the Kubernetes baseline.
+A runnable reference implementation for a self-service Google Kubernetes Engine cluster platform. Application teams request an approved cluster blueprint through a web portal. Git records the request as a direct commit to `main`, Terraform provisions the Google Cloud resources, and Argo CD applies the Kubernetes baseline.
 
 This repository supports two modes:
 
@@ -18,7 +18,7 @@ This repository supports two modes:
 | Request contract | Pydantic models plus versioned YAML records in `requests/` |
 | Policy engine | Blueprint, environment, availability, exposure, GPU, backup, and network checks |
 | IPAM | Controlled node, Pod, Service, and control-plane pools with stable names and repository-wide collision checks |
-| Approval | GitHub pull request with CODEOWNERS and protected environments |
+| Approval | Portal validation + policy checks at submit time; requests commit straight to `main` |
 | Infrastructure | Terraform for platform bootstrap, Cloud Run portal, projects, networking, GKE, IAM, KMS, Fleet, node pools, and backups |
 | GKE security | Private regional control plane, private nodes, Dataplane V2, Workload Identity Federation, Shielded nodes, CMEK, Binary Authorization mode, Google Groups, and least-privilege node identity |
 | H100 support | Dedicated tainted A3 node pool, GPU driver installation, reservation affinity, quota and reservation preflight |
@@ -34,10 +34,9 @@ This repository supports two modes:
 flowchart LR
     U[Application team] --> P[Cloud Run portal with IAP]
     P --> API[FastAPI request service]
-    API --> PR[GitHub pull request]
-    PR --> V[Schema, policy, IPAM, quota, and Terraform plan]
-    V --> A[CODEOWNERS and environment approval]
-    A --> T[Terraform reconcile]
+    API --> C[Direct commit to main]
+    C --> V[Schema, policy, IPAM, and quota checks at submit time]
+    V --> T[Terraform reconcile]
     T --> GCP[Project, VPC, IAM, KMS, regional GKE, node pools, backup]
     GCP --> F[GKE Fleet membership]
     F --> CG[Connect Gateway]

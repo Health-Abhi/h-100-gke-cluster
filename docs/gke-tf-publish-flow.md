@@ -60,24 +60,17 @@ what `.github/workflows/publish-gke-tf.yml` reacts to — whenever
 `clusters/**/gke.tf` changes, including when the portal adds a brand-new
 cluster folder. For every push it:
 
-1. Clones the target repo (`h100-gke-automation`).
-2. Checks out a **persistent** branch there, `cluster-list` — reusing it if
-   it already exists (so cluster folders accumulate on it over time), or
-   creating it fresh from `nonprod` the first time.
-3. Copies every changed/added cluster folder
-   (`clusters/<project>_<cluster>/`) onto that branch.
-4. Commits and pushes to `cluster-list`.
-5. Ensures there's an open PR from `cluster-list` -> `nonprod`: if one is
-   already open, it just leaves a comment noting which folders were added
-   in this push (the push itself updates the PR); otherwise it opens a new
-   one.
-
-It never pushes straight to `nonprod` — everything lands as (and stays as)
-one running PR for review, no matter how many times the portal adds a new
-cluster.
+1. Clones the target repo (`h100-gke-automation`), checking out its
+   `cluster-list` branch directly.
+2. Copies every changed/added cluster folder
+   (`clusters/<project>_<cluster>/`) onto that checkout.
+3. Commits and **pushes straight onto `cluster-list`** — no new branch is
+   created and no pull request is opened.
 
 `GKE_TF_WORK_BRANCH` (Actions variable, default `cluster-list`) controls the
-name of that persistent branch if you want something else.
+name of that branch if you want something else. `GKE_TF_TARGET_BRANCH`
+(`nonprod`) is currently unused by this workflow — how/when `cluster-list`
+gets merged into `nonprod` is still to be decided.
 
 ### Required configuration
 
@@ -85,10 +78,9 @@ Set these in this repo's GitHub Actions settings:
 
 | Name | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `GKE_TF_PUBLISH_TOKEN` | Secret | — (required) | Token with `contents` + `pull-requests` write access to the target repo |
+| `GKE_TF_PUBLISH_TOKEN` | Secret | — (required) | Token with `contents` write access to the target repo |
 | `GKE_TF_TARGET_REPO` | Variable | `Health-Abhi/h100-gke-automation` | `owner/name` of the downstream repo |
-| `GKE_TF_TARGET_BRANCH` | Variable | `nonprod` | Branch to open PRs against |
-| `GKE_TF_WORK_BRANCH` | Variable | `cluster-list` | Persistent branch in the target repo that cluster folders accumulate on |
+| `GKE_TF_WORK_BRANCH` | Variable | `cluster-list` | Branch in the target repo that gets pushed to directly |
 | `GKE_MODULE_SOURCE` | Variable | *(placeholder)* | Terraform module source written into every generated `gke.tf` |
 
 `GKE_TF_PUBLISH_TOKEN` must be a token (fine-grained PAT or GitHub App

@@ -62,7 +62,7 @@ function statusClass(status) {
 
 function renderMetrics() {
   $('#totalRequests').textContent = state.requests.length
-  $('#pendingRequests').textContent = state.requests.filter(item => ['REQUESTED', 'PENDING_REVIEW', 'LOCAL_CREATED'].includes(String(item.status).toUpperCase())).length
+  $('#pendingRequests').textContent = state.requests.filter(item => ['REQUESTED', 'SUBMITTED', 'LOCAL_CREATED'].includes(String(item.status).toUpperCase())).length
   $('#readyRequests').textContent = state.requests.filter(item => String(item.status).toUpperCase() === 'READY').length
   $('#gpuRequests').textContent = state.requests.filter(item => item.gpu_enabled).length
 }
@@ -316,7 +316,7 @@ async function submitCluster(event) {
     validationMessage(warnings.length ? 'warning' : 'success', warnings.length ? 'Valid with warnings' : 'All guardrails passed', warnings.join(' ') || 'Schema, platform policy, availability, networking, and blueprint rules passed.')
     button.textContent = 'Submitting request...'
     const result = await api('/api/v1/requests', { method: 'POST', body: JSON.stringify(payload) })
-    toast(result.pull_request_url ? 'Pull request opened for platform approval' : 'Request created in local mode')
+    toast(result.commit_url ? 'Request committed to main and queued for reconciliation' : 'Request created in local mode')
     form.reset()
     renderCatalog()
     syncEndpointControls()
