@@ -1,7 +1,0 @@
-# Replace these groups with your organization teams.
-/terraform/                    @your-org/platform-engineering
-/gitops/                       @your-org/platform-engineering
-/config/                       @your-org/platform-engineering
-/requests/prod/                @your-org/platform-engineering @your-org/security
-/requests/dev/                 @your-org/platform-engineering
-/requests/test/                @your-org/platform-engineering

@@ -1,9 +1,0 @@
-.git
-.github
-.venv
-__pycache__
-.pytest_cache
-.ruff_cache
-terraform/.terraform
-*.tfstate*
-*.zip
