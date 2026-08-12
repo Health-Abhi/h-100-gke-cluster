@@ -5,12 +5,13 @@ module "gke" {
   region = "us-west3"
   env-type = "nonprod"
   description = "creating new psc cluster with cloudbuild"
-  network_project_id = "net-proj"
-  network = "vpc-net"
-  subnetwork = "subnet-1"
+  network_project_id = "h100-sandbox-np-001-vpc-usw3"
+  network = "001-vpc-usw3"
+  subnetwork = "san-sandbox"
   cluster_resource_labels = {
-    team = "platform"
-    lineofbusiness = "h100-platform"
+    costcenter = "150001"
+    owner = "platform"
+    lineofbusiness = "h100-spltyrx"
   }
   node_pools = [
     {
@@ -71,6 +72,6 @@ terraform {
       version = ">= 2.0.0"
     }
   }
-# Istio internal IP address: 10.0.0.1
-# Istio internal proxy IP address for external LB: 10.0.0.2
+# Istio internal IP address: 10.0.11.1
+# Istio internal proxy IP address for external LB: 10.0.0.10
 }
